@@ -24,3 +24,6 @@ The `images` directory will contain images showing veins and capillaries without
 
 The `notes` directory contains meeting notes.
 
+# Notes
+
+- compare with and without repulsion signal
