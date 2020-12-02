@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import configuration as cfg
-
 from collections import deque
 from datetime import datetime
 from math import inf
@@ -103,7 +101,7 @@ def create_matrix_from_adjacency_list(
             # Update the adjcenecy matrix will all matching colors
             adj_list[(row, col)] = {(x + rt, y + cl) for (x, y) in np.argwhere(connect)}
 
-        if cfg.verbose and row % 100 == 0:
+        if VERBOSE and row % 100 == 0:
             print(f"Completed processing row {row:>{num_digits}} of {height-1}")
 
     return adj_list
@@ -221,7 +219,7 @@ def create_lattice_of_component_counts(
                                     pass
                                 indices_to_skip.add((y, x))
 
-        if cfg.verbose and i % 10 == 0:
+        if VERBOSE and i % 10 == 0:
             print(
                 f"Completed processing component {i:>{num_digits}} of {len(components)-1}"
             )
@@ -365,7 +363,7 @@ def animate_cells(
             cell_anim[y, x] = True
         cell_anim_steps.append(cell_anim.copy())
 
-        if cfg.verbose:
+        if VERBOSE:
             print(f"Iteration {iteration:>3}: {num_free:>3} cells still moving.")
 
     return cell_grid, cell_anim_steps
@@ -379,7 +377,7 @@ def run_animations(
     animations = []
 
     for _ in range(num_animations):
-        if cfg.verbose:
+        if VERBOSE:
             print()
         g, a = animate_cells(num_free_cells, regions, max_iterations, neighborhood)
         final_grids.append(g)
@@ -389,7 +387,7 @@ def run_animations(
 
 
 def plot_figures(
-    components, square_image, final_pane, binary_image, lattice, regions, dirname
+    components, square_image, final_panes, binary_image, lattice, regions, dirname
 ) -> None:
 
     num_components = len(components)
@@ -415,13 +413,13 @@ def plot_figures(
         (components_image, "Components Image"),
         (lattice, "Lattice Image"),
         (regions, "Scored Regions"),
-        (final_pane, "After Simulation"),
+        (final_panes, "After Simulation"),
     ]
 
     for ax, (img, ttl) in zip(axes, plots):
 
         if ttl == "After Simulation":
-            alpha = 1 / cfg.num_simulations
+            alpha = 1 / len(final_panes)
 
             for g in img:
                 gimage = np.zeros(list(g.shape) + [3])
@@ -433,7 +431,7 @@ def plot_figures(
 
     plt.savefig(path.join(dirname, "panel_image.png"))
 
-    if cfg.showplots:
+    if VERBOSE:
         plt.tight_layout()
         plt.show()
 
@@ -449,7 +447,7 @@ def generate_animation_image(animation_data, dirname):
 
         return gimage
 
-    alpha = 1 / cfg.num_simulations
+    alpha = 1 / len(animation_data)
     fig, ax = plt.subplots()
 
     anim_image = np.zeros(list(animation_data[0][0].shape) + [3], dtype=np.int)
@@ -464,12 +462,18 @@ def generate_animation_image(animation_data, dirname):
     max_frame = max(len(anim) for anim in animation_data)
     ani = matplotlib.animation.FuncAnimation(fig, animate, frames=max_frame)
 
-    # HTML(ani.to_html5_video())
-    # HTML(ani.to_jshtml())
     ani.save(path.join(dirname, "animation.gif"))
 
 
+VERBOSE = False
+
+
 def main() -> None:
+
+    import configuration as cfg
+
+    global VERBOSE
+    VERBOSE = cfg.verbose
 
     new_dirname = path.join(getcwd(), datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
     makedirs(new_dirname)
@@ -484,20 +488,20 @@ def main() -> None:
 
     start = time()
     binary_image = binarize_and_threshold_image(square_image, cfg.binary_threshold)
-    if cfg.verbose:
+    if VERBOSE:
         print(binary_image.shape, binary_image.dtype)
         print(f"Time to binarize the input image: {time() - start:0.3f}s\n")
 
     start = time()
     adj_list = create_matrix_from_adjacency_list(binary_image, cfg.connection_radius)
-    if cfg.verbose:
+    if VERBOSE:
         print("Number of vertices in graph:", len(adj_list))
         print(f"Time to create graph: {time() - start:0.3f}s\n")
 
     start = time()
     components = find_connected_compnents(adj_list)
     num_components = len(components)
-    if cfg.verbose:
+    if VERBOSE:
         print("Number of components:", num_components)
         print(f"Time to compute connected components: {time() - start:0.3f}s\n")
 
@@ -509,13 +513,13 @@ def main() -> None:
         components,
         cfg.min_component_size,
     )
-    if cfg.verbose:
+    if VERBOSE:
         print(f"Time to create lattice: {time() - start:0.3f}s\n")
 
     start = time()
     brightness = get_brightnesses_from_image(square_image, cfg.lattice_stride)
     regions = compute_region_scores(lattice, brightness)
-    if cfg.verbose:
+    if VERBOSE:
         print(f"Time to create regions: {time() - start:0.3f}s\n")
 
     # cell_grid, cell_anim = animate_cells(

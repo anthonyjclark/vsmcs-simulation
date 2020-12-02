@@ -19,7 +19,6 @@ num_simulations = 100
 
 # Meta
 verbose = True
-showplots = True
 
 # image = Image.open("images/binary.jpg")
 # image = Image.open("images/Cap-3-20x-vessels-blackandwhite.tif")
