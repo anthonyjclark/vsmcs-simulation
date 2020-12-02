@@ -464,6 +464,8 @@ def generate_animation_image(animation_data, dirname):
 
     ani.save(path.join(dirname, "animation.gif"))
 
+    return ani
+
 
 VERBOSE = False
 
