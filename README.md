@@ -6,17 +6,18 @@ In the image above: (top left) the original image; (top middle) the image binari
 
 # Files
 
-```
-├── README.md
-├── example-run.png
+```text
+├── configuration.py
+├── simulate.py
 ├── images
+│   ├── Art-2-vessels-binarized.tif
+│   ├── ...
 │   └── binary.jpg
 ├── notes
 │   ├── algorithm.jpg
-│   ├── parameters.jpg
-│   ├── simulation1.jpg
-│   ├── simulation2.jpg
+│   ├── ...
 │   └── simulation3.jpg
+├── vsmcs-simulation-original.ipynb
 └── vsmcs-simulation.ipynb
 ```
 
@@ -24,6 +25,20 @@ The `images` directory will contain images showing veins and capillaries without
 
 The `notes` directory contains meeting notes.
 
+The Python files `configuration.py` and `simulate.py` can be used to generate the output panel image (as above) and an animation.
+
+The two notebooks can be used to interactively play with parameters and generate new images and animations.
+
+# Running a Simulation
+
+```bash
+# First update configuration.py and then run
+./simulate.py
+```
+
+This command will generate a directory named `"%Y-%m-%d_%H-%M-%S"` that will include a copy of the configuration file, a panel image, and an animation.
+
 # Notes
 
 - compare with and without repulsion signal
+- add caching
