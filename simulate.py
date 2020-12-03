@@ -311,6 +311,10 @@ def travel(
 
             neigh_score = regions[y, x]
 
+            # TODO: Change score based on distance from current cell
+            # TODO: Compute a direction based on all neighbor values
+            # (not just peak value)
+
             if neigh_score < score and cell_grid[y, x] == EMPTY:
                 score = neigh_score
                 ynew, xnew = y, x
@@ -486,6 +490,7 @@ def main() -> None:
 
     # Force the image to be square
     # TODO: ask Ryan if we can expect most images to be about 512x512
+    # TODO: better to chop?
     square_image = cfg.image.resize((512, 512))
 
     start = time()
