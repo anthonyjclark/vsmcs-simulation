@@ -294,31 +294,66 @@ def travel(
     return a new location for the cell
     """
 
+    # Score of the current cell
     score = regions[ycell, xcell] if cell_grid[ycell, xcell] == EMPTY else inf
 
     ynew, xnew = ycell, xcell
 
     height, width = cell_grid.shape
 
+    # Get neighborhood around this cell (clamped by borders of image)
+    # (+ 1 for exclusive upper bound)
     ymin = max(0, ycell - neighborhood)
     ymax = min(height, ycell + neighborhood + 1)
 
     xmin = max(0, xcell - neighborhood)
     xmax = min(width, xcell + neighborhood + 1)
 
-    for y in range(ymin, ymax):
-        for x in range(xmin, xmax):
+    # TODO: this is the only method wherein we moved to the local optimum
+    # for y in range(ymin, ymax):
+    #     for x in range(xmin, xmax):
 
-            neigh_score = regions[y, x]
+    #         neigh_score = regions[y, x]
 
-            # TODO: Change score based on distance from current cell
-            # TODO: Compute a direction based on all neighbor values
-            # (not just peak value)
+    #         # TODO: Change score based on distance from current cell
+    #         # TODO: Compute a direction based on all neighbor values
+    #         # (not just peak value)
 
-            if neigh_score < score and cell_grid[y, x] == EMPTY:
-                score = neigh_score
-                ynew, xnew = y, x
+    #         if neigh_score < score and cell_grid[y, x] == EMPTY:
+    #             score = neigh_score
+    #             ynew, xnew = y, x
 
+    # Get offset indices
+    xoffmin = -min(xcell, neighborhood)
+    xoffmax = min(width - 1 - xcell, neighborhood)
+
+    yoffmin = -min(ycell, neighborhood)
+    yoffmax = min(height - 1 - ycell, neighborhood)
+
+    xoffsets = range(xoffmin, xoffmax + 1)
+    yoffsets = range(yoffmin, yoffmax + 1)
+    xs, ys = np.meshgrid(xoffsets, yoffsets)
+
+    # Negate scores so that the direction is toward negative values
+    neigh_scores = -regions[ymin:ymax, xmin:xmax] / 4
+
+    # Compute direction based on neighborhood
+    xpull = (xs * neigh_scores).sum()
+    ypull = (ys * neigh_scores).sum()
+
+    move_thresh = 20
+    if xpull > move_thresh and xnew < (width - 1):
+        xnew += 1
+    elif xpull < -move_thresh and xnew > 0:
+        xnew -= 1
+
+    if ypull > move_thresh and ynew < (height - 1):
+        ynew += 1
+    elif ypull < -move_thresh and ynew > 0:
+        ynew -= 1
+
+    # print(xnew, ynew, xpull, ypull)
+    # print(neigh_scores.max())
     # What should we do if the cell gets trapped?
     # assert(score != inf)
     return ynew, xnew
