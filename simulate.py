@@ -294,8 +294,8 @@ def travel(
     return a new location for the cell
     """
 
-    # Score of the current cell
-    score = regions[ycell, xcell] if cell_grid[ycell, xcell] == EMPTY else inf
+    # # Score of the current cell
+    # score = regions[ycell, xcell] if cell_grid[ycell, xcell] == EMPTY else inf
 
     ynew, xnew = ycell, xcell
 
@@ -323,15 +323,25 @@ def travel(
     #             score = neigh_score
     #             ynew, xnew = y, x
 
-    # Get offset indices
-    xoffmin = -min(xcell, neighborhood)
-    xoffmax = min(width - 1 - xcell, neighborhood)
+    # # Get offset indices
+    # xoffmin = -min(xcell, neighborhood)
+    # xoffmax = min(width - 1 - xcell, neighborhood)
 
-    yoffmin = -min(ycell, neighborhood)
-    yoffmax = min(height - 1 - ycell, neighborhood)
+    # yoffmin = -min(ycell, neighborhood)
+    # yoffmax = min(height - 1 - ycell, neighborhood)
 
-    xoffsets = range(xoffmin, xoffmax + 1)
-    yoffsets = range(yoffmin, yoffmax + 1)
+    # xoffsets = range(xoffmin, xoffmax + 1)
+    # yoffsets = range(yoffmin, yoffmax + 1)
+
+    numleft = min(neighborhood, xcell)
+    numright = min(neighborhood, width - (xcell + 1))
+
+    numabove = min(neighborhood, ycell)
+    numbelow = min(neighborhood, height - (ycell + 1))
+
+    xoffsets = [-1] * numleft + [0] + [1] * numright
+    yoffsets = [-1] * numabove + [0] + [1] * numbelow
+
     xs, ys = np.meshgrid(xoffsets, yoffsets)
 
     # Negate scores so that the direction is toward negative values
