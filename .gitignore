@@ -161,3 +161,5 @@ dmypy.json
 .history
 
 # End of https://www.gitignore.io/api/macos,visualstudiocode,python,jupyternotebooks
+
+.vscode
