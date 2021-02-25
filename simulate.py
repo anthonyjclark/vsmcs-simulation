@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# TODO: Add probability of binding proportaional
+# to push/pull and some global scale.
+
 from collections import deque
 from datetime import datetime
 from math import inf
@@ -22,6 +25,20 @@ Vertex = Tuple[int, int]
 Graph = Dict[Vertex, List[Vertex]]
 
 MOVING, STATIONARY, EMPTY = True, False, False
+
+
+# TODO: for the love of GOD do not hard code this
+neighborhood_distances = np.array(
+    [
+        [0.236, 0.277, 0.316, 0.333, 0.316, 0.277, 0.236],
+        [0.277, 0.354, 0.447, 0.5, 0.447, 0.354, 0.277],
+        [0.316, 0.447, 0.707, 1.0, 0.707, 0.447, 0.316],
+        [0.333, 0.5, 1.0, 0.0, 1.0, 0.5, 0.333],
+        [0.316, 0.447, 0.707, 1.0, 0.707, 0.447, 0.316],
+        [0.277, 0.354, 0.447, 0.5, 0.447, 0.354, 0.277],
+        [0.236, 0.277, 0.316, 0.333, 0.316, 0.277, 0.236],
+    ]
+)
 
 
 def binarize_and_threshold_image(image: Image, threshold: int) -> np.ndarray:
@@ -339,19 +356,42 @@ def travel(
     numabove = min(neighborhood, ycell)
     numbelow = min(neighborhood, height - (ycell + 1))
 
-    xoffsets = [-1] * numleft + [0] + [1] * numright
-    yoffsets = [-1] * numabove + [0] + [1] * numbelow
+    xdirfactor = [-1] * numleft + [0] + [1] * numright
+    ydirfactor = [-1] * numabove + [0] + [1] * numbelow
 
-    xs, ys = np.meshgrid(xoffsets, yoffsets)
+    xs, ys = np.meshgrid(xdirfactor, ydirfactor)
 
     # Negate scores so that the direction is toward negative values
     neigh_scores = -regions[ymin:ymax, xmin:xmax] / 4
 
-    # Compute direction based on neighborhood
-    xpull = (xs * neigh_scores).sum()
-    ypull = (ys * neigh_scores).sum()
+    # Truncate neighborhood_distances
+    if xcell - neighborhood < 0:
+        sx = abs(xcell - neighborhood)
+    else:
+        sx = 0
 
-    move_thresh = 20
+    if (xcell + neighborhood) > (width - 1):
+        ex = (neighborhood * 2 + 1) - abs(xcell + neighborhood - width + 1)
+    else:
+        ex = neighborhood * 2 + 1
+
+    if ycell - neighborhood < 0:
+        sy = abs(ycell - neighborhood)
+    else:
+        sy = 0
+
+    if (ycell + neighborhood) > (width - 1):
+        ey = (neighborhood * 2 + 1) - abs(ycell + neighborhood - width + 1)
+    else:
+        ey = neighborhood * 2 + 1
+
+    trunc_distances = neighborhood_distances[sy:ey, sx:ex]
+
+    # Compute direction based on neighborhood
+    xpull = (xs * neigh_scores * trunc_distances).sum()
+    ypull = (ys * neigh_scores * trunc_distances).sum()
+
+    move_thresh = 0
     if xpull > move_thresh and xnew < (width - 1):
         xnew += 1
     elif xpull < -move_thresh and xnew > 0:
