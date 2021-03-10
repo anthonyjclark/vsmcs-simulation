@@ -289,7 +289,7 @@ def compute_region_scores(lattice: np.ndarray, brightness: np.ndarray) -> np.nda
 
     regions = lattice - max_components / 2
     regions *= brightness
-    return regions
+    return regions / np.abs(regions).max()
 
 
 def travel(
@@ -613,10 +613,6 @@ def main() -> None:
     regions = compute_region_scores(lattice, brightness)
     if VERBOSE:
         print(f"Time to create regions: {time() - start:0.3f}s\n")
-
-    # cell_grid, cell_anim = animate_cells(
-    #     cfg.num_free_cells, regions, cfg.max_iterations, cfg.neighborhood
-    # )
 
     final_panes, animation_data = run_animations(
         regions,
