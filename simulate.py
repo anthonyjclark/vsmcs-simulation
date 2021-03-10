@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-# TODO: Add probability of binding proportaional
-# to push/pull and some global scale.
-
 from collections import deque
 from datetime import datetime
 from math import inf
@@ -25,20 +22,6 @@ Vertex = Tuple[int, int]
 Graph = Dict[Vertex, List[Vertex]]
 
 MOVING, STATIONARY, EMPTY = True, False, False
-
-
-# TODO: for the love of GOD do not hard code this
-neighborhood_distances = np.array(
-    [
-        [0.236, 0.277, 0.316, 0.333, 0.316, 0.277, 0.236],
-        [0.277, 0.354, 0.447, 0.5, 0.447, 0.354, 0.277],
-        [0.316, 0.447, 0.707, 1.0, 0.707, 0.447, 0.316],
-        [0.333, 0.5, 1.0, 0.0, 1.0, 0.5, 0.333],
-        [0.316, 0.447, 0.707, 1.0, 0.707, 0.447, 0.316],
-        [0.277, 0.354, 0.447, 0.5, 0.447, 0.354, 0.277],
-        [0.236, 0.277, 0.316, 0.333, 0.316, 0.277, 0.236],
-    ]
-)
 
 
 def binarize_and_threshold_image(image: Image, threshold: int) -> np.ndarray:
@@ -298,7 +281,7 @@ def travel(
     regions: np.ndarray,
     neighborhood: int,
     cell_grid: np.ndarray,
-) -> Tuple[int, int]:
+) -> Tuple[float, float, float]:
     """Move a VSMCS from its current location based on its neighborhood.
 
     args
@@ -308,6 +291,7 @@ def travel(
         neighborhood : area in which to search for a new position
         cell_grid : current status of all cells
 
+    # TODO: fix this docstring if we keep the return type for travel
     return a new location for the cell
     """
 
@@ -326,45 +310,21 @@ def travel(
     xmin = max(0, xcell - neighborhood)
     xmax = min(width, xcell + neighborhood + 1)
 
-    # TODO: this is the only method wherein we moved to the local optimum
-    # for y in range(ymin, ymax):
-    #     for x in range(xmin, xmax):
-
-    #         neigh_score = regions[y, x]
-
-    #         # TODO: Change score based on distance from current cell
-    #         # TODO: Compute a direction based on all neighbor values
-    #         # (not just peak value)
-
-    #         if neigh_score < score and cell_grid[y, x] == EMPTY:
-    #             score = neigh_score
-    #             ynew, xnew = y, x
-
-    # # Get offset indices
-    # xoffmin = -min(xcell, neighborhood)
-    # xoffmax = min(width - 1 - xcell, neighborhood)
-
-    # yoffmin = -min(ycell, neighborhood)
-    # yoffmax = min(height - 1 - ycell, neighborhood)
-
-    # xoffsets = range(xoffmin, xoffmax + 1)
-    # yoffsets = range(yoffmin, yoffmax + 1)
-
     numleft = min(neighborhood, xcell)
     numright = min(neighborhood, width - (xcell + 1))
 
     numabove = min(neighborhood, ycell)
     numbelow = min(neighborhood, height - (ycell + 1))
 
-    xdirfactor = [-1] * numleft + [0] + [1] * numright
-    ydirfactor = [-1] * numabove + [0] + [1] * numbelow
+    xsign = [-1] * numleft + [0] + [1] * numright
+    ysign = [-1] * numabove + [0] + [1] * numbelow
 
-    xs, ys = np.meshgrid(xdirfactor, ydirfactor)
+    xsign, ysign = np.meshgrid(xsign, ysign)
 
     # Negate scores so that the direction is toward negative values
-    neigh_scores = -regions[ymin:ymax, xmin:xmax] / 4
+    neigh_scores = -regions[ymin:ymax, xmin:xmax]
 
-    # Truncate neighborhood_distances
+    # Truncate neighborhood_distances if we are near the boundary
     if xcell - neighborhood < 0:
         sx = abs(xcell - neighborhood)
     else:
@@ -385,28 +345,46 @@ def travel(
     else:
         ey = neighborhood * 2 + 1
 
-    trunc_distances = neighborhood_distances[sy:ey, sx:ex]
+    n = neighborhood
+    neighborhood_distances = [[0 for _ in range(n * 2 + 1)] for _ in range(n * 2 + 1)]
+
+    for r, row in enumerate(neighborhood_distances):
+        for c, col in enumerate(row):
+            neighborhood_distances[r][c] = np.sqrt((n - r) ** 2 + (n - c) ** 2)
+
+    neighborhood_distances = np.array(neighborhood_distances)
+    neighborhood_distances[n, n] = 1
+    neighborhood_distances = 1 / np.array(neighborhood_distances)
+    neighborhood_distances[n, n] = 0
+
+    neigh_dists = neighborhood_distances[sy:ey, sx:ex]
 
     # Compute direction based on neighborhood
-    xpull = (xs * neigh_scores * trunc_distances).sum()
-    ypull = (ys * neigh_scores * trunc_distances).sum()
+    xpull = (xsign * neigh_scores * neigh_dists).sum()
+    ypull = (ysign * neigh_scores * neigh_dists).sum()
 
-    move_thresh = 0
-    if xpull > move_thresh and xnew < (width - 1):
-        xnew += 1
-    elif xpull < -move_thresh and xnew > 0:
-        xnew -= 1
+    max_pull = neigh_dists.sum()
 
-    if ypull > move_thresh and ynew < (height - 1):
-        ynew += 1
-    elif ypull < -move_thresh and ynew > 0:
-        ynew -= 1
+    return xpull, ypull, max_pull
 
-    # print(xnew, ynew, xpull, ypull)
-    # print(neigh_scores.max())
-    # What should we do if the cell gets trapped?
-    # assert(score != inf)
-    return ynew, xnew
+    # # TODO: 10% of maximum pull value (we should tune this)
+    # # TODO: maybe remove this from here and just return pull factors?
+    # move_thresh = 0  # 0.1 * max_pull
+    # if xpull > move_thresh and xnew < (width - 1):
+    #     xnew += 1
+    # elif xpull < -move_thresh and xnew > 0:
+    #     xnew -= 1
+
+    # if ypull > move_thresh and ynew < (height - 1):
+    #     ynew += 1
+    # elif ypull < -move_thresh and ynew > 0:
+    #     ynew -= 1
+
+    # # print(xnew, ynew, xpull, ypull)
+    # # print(neigh_scores.max())
+    # # What should we do if the cell gets trapped?
+    # # assert(score != inf)
+    # return ynew, xnew
 
 
 def animate_cells(
@@ -435,9 +413,26 @@ def animate_cells(
 
         for i, (y, x, free) in enumerate(cells):
             if free == MOVING:
-                ynew, xnew = travel(y, x, regions, neighborhood, cell_grid)
+                # ynew, xnew = travel(y, x, regions, neighborhood, cell_grid)
+                ypull, xpull, max_pull = travel(y, x, regions, neighborhood, cell_grid)
+
+                ynew = y
+                # TODO: maybe a non-linear response?
+                if np.abs(ypull * 3 / max_pull) + 0.1 > np.random.rand():
+                    if ypull < 0 and y < (height - 1):
+                        ynew += 1
+                    elif ypull > 0 and y > 0:
+                        ynew -= 1
+
+                xnew = x
+                if np.abs(xpull * 3 / max_pull) + 0.1 > np.random.rand():
+                    if xpull < 0 and x < (width - 1):
+                        xnew += 1
+                    elif xpull > 0 and x > 0:
+                        xnew -= 1
 
                 # No movement
+                # TODO: maybe add count (if we don't move so many times in a row...)
                 if ynew == y and xnew == x:
                     cell_grid[y, x] = True
                     cells[i] = (y, x, STATIONARY)
