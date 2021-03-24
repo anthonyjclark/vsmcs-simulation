@@ -1,5 +1,64 @@
 #!/usr/bin/env python3
 
+# TODO:
+# - don't use the edge of the image?
+# - clean, document, search for off-by-one errors
+
+
+"""
+General process:
+
+1. binarize_and_threshold_image
+
+Take an image and convert all pixels to 0 or 1
+
+2. create_matrix_from_adjacency_list
+
+Create a graph from the image. Vertices (pixels) are connected
+if they are the same color (0 or 1) and they are within some
+radius.
+
+3. find_connected_compnents
+
+Find all graph components.
+
+4. count_components_per_region
+
+Create a new lattice of values. The values depend on the number
+of graph components found within some radius of each lattice
+regions's center.
+
+5. compute_brightness_per_region
+
+This is not dependent on steps 2 through 4. Get the average
+brightness in each region of the image. The regions here
+correspond to the regions in the lattice of step 4.
+
+6. compute_region_push_pull_score
+
+Compute veiny/capilliary qualities based on:
+(1) the number of differnt pixel groups
+as given by count_components_per_region
+(2) the veiny/capilliary qualities as given by compute_brightness_per_region
+
+Low  lattice score + Low  brightness --> void space
+Low  lattice score + High brightness --> vein
+High lattice score + Low  brightness --> capilliary
+High lattice score + High brightness --> capilliary
+
+7. run_animations
+
+Drop a bunch of red blood cells and see where they stick.
+"""
+
+
+"""
+You'll see "# type: ignore" scattered throughout this file.
+That is me turning off type-checking for some of the code
+that I know works correctly, but the type-checker doesn't
+agree.
+"""
+
 from collections import deque
 from datetime import datetime
 from math import inf
@@ -22,6 +81,10 @@ Vertex = Tuple[int, int]
 Graph = Dict[Vertex, List[Vertex]]
 
 MOVING, STATIONARY, EMPTY = True, False, False
+
+
+def sigmoid(x: float) -> float:
+    return 1 / (1 + np.exp(-4 * x))  # type: ignore
 
 
 def binarize_and_threshold_image(image: Image, threshold: int) -> np.ndarray:
@@ -95,7 +158,7 @@ def create_matrix_from_adjacency_list(
             dists = sqrt((xg - col) ** 2 + (yg - row) ** 2)
             within_radius = dists <= (radius + epsilon)
 
-            # All cells with the same color
+            # All cells with the same color and within the radius
             connect = logical_and(matrix[rt:rb, cl:cr] == cell_color, within_radius)
 
             # Update the adjcenecy matrix will all matching colors
@@ -157,7 +220,7 @@ def round_to_stride(value: int, stride: int) -> int:
     return int(stride * round(value / stride))
 
 
-def create_lattice_of_component_counts(
+def count_components_per_region(
     input_shape: Tuple[int, int],
     radius: float,
     stride: int,
@@ -227,7 +290,7 @@ def create_lattice_of_component_counts(
     return lattice
 
 
-def get_brightnesses_from_image(image: Image, stride: int) -> np.ndarray:
+def compute_brightness_per_region(image: Image, stride: int) -> np.ndarray:
     """Compute scaled brightness for image.
 
     args
@@ -247,7 +310,7 @@ def get_brightnesses_from_image(image: Image, stride: int) -> np.ndarray:
     # Scaled height and width
     sh, sw = fh // stride, fw // stride
 
-    # Lop of edges of image if necessary and average over RGB channels
+    # Lop off edges of image if necessary and average over RGB channels
     mat = mat[:fh, :fw].mean(2)
 
     # Average each stride-by-stride box
@@ -258,7 +321,9 @@ def get_brightnesses_from_image(image: Image, stride: int) -> np.ndarray:
     return mat / max_val * 2 - 1
 
 
-def compute_region_scores(lattice: np.ndarray, brightness: np.ndarray) -> np.ndarray:
+def compute_region_push_pull_score(
+    lattice: np.ndarray, brightness: np.ndarray
+) -> np.ndarray:
     """Compute region scores based on graph components and brightness.
 
     args
@@ -272,15 +337,13 @@ def compute_region_scores(lattice: np.ndarray, brightness: np.ndarray) -> np.nda
 
     regions = lattice - max_components / 2
     regions *= brightness
+
+    # TODO: is this what we want
     return regions / np.abs(regions).max()
 
 
-def travel(
-    ycell: int,
-    xcell: int,
-    regions: np.ndarray,
-    neighborhood: int,
-    cell_grid: np.ndarray,
+def compute_push_pull_direction(
+    ycell: int, xcell: int, regions: np.ndarray, neigh_size: int
 ) -> Tuple[float, float, float]:
     """Move a VSMCS from its current location based on its neighborhood.
 
@@ -288,103 +351,92 @@ def travel(
         ycell : cell's current y index
         xcell : cell's current x index
         regions : grid of attraction/repulsion
-        neighborhood : area in which to search for a new position
-        cell_grid : current status of all cells
+        neigh_size : area in which to search for a new position
 
-    # TODO: fix this docstring if we keep the return type for travel
+    # TODO: fix this docstring if we keep the return type for compute_push_pull_direction
     return a new location for the cell
     """
 
-    # # Score of the current cell
-    # score = regions[ycell, xcell] if cell_grid[ycell, xcell] == EMPTY else inf
+    height, width = regions.shape
 
-    ynew, xnew = ycell, xcell
+    #
+    # Step 1: get the scores of the surrounding regions
+    #
 
-    height, width = cell_grid.shape
-
-    # Get neighborhood around this cell (clamped by borders of image)
+    # Get neigh_size around this cell (clamped by borders of image)
     # (+ 1 for exclusive upper bound)
-    ymin = max(0, ycell - neighborhood)
-    ymax = min(height, ycell + neighborhood + 1)
+    ymin = max(0, ycell - neigh_size)
+    ymax = min(height, ycell + neigh_size + 1)
 
-    xmin = max(0, xcell - neighborhood)
-    xmax = min(width, xcell + neighborhood + 1)
-
-    numleft = min(neighborhood, xcell)
-    numright = min(neighborhood, width - (xcell + 1))
-
-    numabove = min(neighborhood, ycell)
-    numbelow = min(neighborhood, height - (ycell + 1))
-
-    xsign = [-1] * numleft + [0] + [1] * numright
-    ysign = [-1] * numabove + [0] + [1] * numbelow
-
-    xsign, ysign = np.meshgrid(xsign, ysign)
+    xmin = max(0, xcell - neigh_size)
+    xmax = min(width, xcell + neigh_size + 1)
 
     # Negate scores so that the direction is toward negative values
     neigh_scores = -regions[ymin:ymax, xmin:xmax]
 
-    # Truncate neighborhood_distances if we are near the boundary
-    if xcell - neighborhood < 0:
-        sx = abs(xcell - neighborhood)
-    else:
-        sx = 0
+    # Eliminate push or pull with the following lines
+    # neigh_scores[neigh_scores < 0] = 0  # Push
+    # neigh_scores[neigh_scores > 0] = 0  # Pull
 
-    if (xcell + neighborhood) > (width - 1):
-        ex = (neighborhood * 2 + 1) - abs(xcell + neighborhood - width + 1)
-    else:
-        ex = neighborhood * 2 + 1
+    #
+    # Step 2: create a directional matrix (left and above are negative)
+    #  (right and down are positive)
+    #
 
-    if ycell - neighborhood < 0:
-        sy = abs(ycell - neighborhood)
-    else:
-        sy = 0
+    # The number to the above, below, left, and right depends on how
+    # close we are to a border
+    num_above = min(neigh_size, ycell)
+    num_below = min(neigh_size, height - (ycell + 1))
+    num_to_left = min(neigh_size, xcell)
+    num_to_right = min(neigh_size, width - (xcell + 1))
 
-    if (ycell + neighborhood) > (width - 1):
-        ey = (neighborhood * 2 + 1) - abs(ycell + neighborhood - width + 1)
-    else:
-        ey = neighborhood * 2 + 1
+    # Cells to the left are at lower indices (hence the -1)
+    ysign = [-1] * num_above + [0] + [1] * num_below
+    xsign = [-1] * num_to_left + [0] + [1] * num_to_right
 
-    n = neighborhood
-    neighborhood_distances = [[0 for _ in range(n * 2 + 1)] for _ in range(n * 2 + 1)]
+    xsign, ysign = np.meshgrid(xsign, ysign)
 
-    for r, row in enumerate(neighborhood_distances):
+    #
+    # Step 3: compute the inverse distances to surrounding regions
+    # TODO: this could be passed in and doesn't need to be computed
+    # each call
+    #
+
+    neigh_dim = neigh_size * 2 + 1
+    neigh_dists = [[0 for _ in range(neigh_dim)] for _ in range(neigh_dim)]
+
+    for r, row in enumerate(neigh_dists):
         for c, col in enumerate(row):
-            neighborhood_distances[r][c] = np.sqrt((n - r) ** 2 + (n - c) ** 2)
+            neigh_dists[r][c] = np.sqrt((neigh_size - r) ** 2 + (neigh_size - c) ** 2)
 
-    neighborhood_distances = np.array(neighborhood_distances)
-    neighborhood_distances[n, n] = 1
-    neighborhood_distances = 1 / np.array(neighborhood_distances)
-    neighborhood_distances[n, n] = 0
+    # Compute inverse distances
+    # TODO: r^2?
+    neigh_inverse_dists = np.array(neigh_dists)
+    neigh_inverse_dists[neigh_size, neigh_size] = 1
+    neigh_inverse_dists = 1 / np.array(neigh_inverse_dists)
+    neigh_inverse_dists[neigh_size, neigh_size] = 0
 
-    neigh_dists = neighborhood_distances[sy:ey, sx:ex]
+    # Truncate neigh_dists if we are near the boundary
+    ylo = max(0, neigh_size - ycell)
+    yhi = neigh_dim - max(0, ycell + neigh_size - height + 1)
 
-    # Compute direction based on neighborhood
-    xpull = (xsign * neigh_scores * neigh_dists).sum()
-    ypull = (ysign * neigh_scores * neigh_dists).sum()
+    xlo = max(0, neigh_size - xcell)
+    xhi = neigh_dim - max(0, xcell + neigh_size - width + 1)
 
-    max_pull = neigh_dists.sum()
+    neigh_inverse_dists = neigh_inverse_dists[ylo:yhi, xlo:xhi]
+
+    #
+    # Step 4: compute final push/pull (repulsion/attraction) factor
+    # for chemotaxis
+    #
+
+    # Compute direction based on neigh_size
+    xpull = (xsign * neigh_scores * neigh_inverse_dists).sum()
+    ypull = (ysign * neigh_scores * neigh_inverse_dists).sum()
+
+    max_pull = neigh_inverse_dists.sum()
 
     return xpull, ypull, max_pull
-
-    # # TODO: 10% of maximum pull value (we should tune this)
-    # # TODO: maybe remove this from here and just return pull factors?
-    # move_thresh = 0  # 0.1 * max_pull
-    # if xpull > move_thresh and xnew < (width - 1):
-    #     xnew += 1
-    # elif xpull < -move_thresh and xnew > 0:
-    #     xnew -= 1
-
-    # if ypull > move_thresh and ynew < (height - 1):
-    #     ynew += 1
-    # elif ypull < -move_thresh and ynew > 0:
-    #     ynew -= 1
-
-    # # print(xnew, ynew, xpull, ypull)
-    # # print(neigh_scores.max())
-    # # What should we do if the cell gets trapped?
-    # # assert(score != inf)
-    # return ynew, xnew
 
 
 def animate_cells(
@@ -398,7 +450,15 @@ def animate_cells(
     cell_anim_steps = [cell_anim.copy()]
 
     # Initial cell placements (allowing colocated cells)
-    cells = [(randrange(height), randrange(width), MOVING) for _ in range(num_free)]
+    # TODO: do we want to restrict cell movement like this?
+    cells = [
+        (
+            randrange(neighborhood, height - neighborhood),
+            randrange(neighborhood, width - neighborhood),
+            MOVING,
+        )
+        for _ in range(num_free)
+    ]
 
     cell_anim = np.zeros_like(regions, dtype=np.bool)
     for (y, x, _) in cells:
@@ -413,27 +473,37 @@ def animate_cells(
 
         for i, (y, x, free) in enumerate(cells):
             if free == MOVING:
-                # ynew, xnew = travel(y, x, regions, neighborhood, cell_grid)
-                ypull, xpull, max_pull = travel(y, x, regions, neighborhood, cell_grid)
+                # ynew, xnew = compute_push_pull_direction(y, x, regions, neighborhood, cell_grid)
+                ypull, xpull, max_pull = compute_push_pull_direction(
+                    y, x, regions, neighborhood
+                )
 
                 ynew = y
                 # TODO: maybe a non-linear response?
-                if np.abs(ypull * 3 / max_pull) + 0.1 > np.random.rand():
+                if sigmoid(np.abs(ypull / max_pull)) > np.random.rand():
                     if ypull < 0 and y < (height - 1):
                         ynew += 1
                     elif ypull > 0 and y > 0:
                         ynew -= 1
 
                 xnew = x
-                if np.abs(xpull * 3 / max_pull) + 0.1 > np.random.rand():
+                if sigmoid(np.abs(xpull / max_pull)) > np.random.rand():
                     if xpull < 0 and x < (width - 1):
                         xnew += 1
                     elif xpull > 0 and x > 0:
                         xnew -= 1
 
+                # TODO:
+                # If didn't move, roll a die and attach with probability related to score
+                # Should we have a probability to attach without movement?
+
                 # No movement
                 # TODO: maybe add count (if we don't move so many times in a row...)
-                if ynew == y and xnew == x:
+                if (
+                    ynew == y
+                    and xnew == x
+                    and (sigmoid(regions[y, x]) > np.random.rand())
+                ):
                     cell_grid[y, x] = True
                     cells[i] = (y, x, STATIONARY)
                     num_free -= 1
@@ -593,7 +663,7 @@ def main() -> None:
         print(f"Time to compute connected components: {time() - start:0.3f}s\n")
 
     start = time()
-    lattice = create_lattice_of_component_counts(
+    lattice = count_components_per_region(
         binary_image.shape,
         cfg.lattice_radius,
         cfg.lattice_stride,
@@ -604,8 +674,8 @@ def main() -> None:
         print(f"Time to create lattice: {time() - start:0.3f}s\n")
 
     start = time()
-    brightness = get_brightnesses_from_image(square_image, cfg.lattice_stride)
-    regions = compute_region_scores(lattice, brightness)
+    brightness = compute_brightness_per_region(square_image, cfg.lattice_stride)
+    regions = compute_region_push_pull_score(lattice, brightness)
     if VERBOSE:
         print(f"Time to create regions: {time() - start:0.3f}s\n")
 
