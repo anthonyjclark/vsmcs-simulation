@@ -469,6 +469,7 @@ def animate_cells(
     for iteration in range(max_iters):
 
         if num_free == 0:
+            print("breaking")
             break
 
         for i, (y, x, free) in enumerate(cells):
@@ -520,7 +521,7 @@ def animate_cells(
         if VERBOSE:
             print(f"Iteration {iteration:>3}: {num_free:>3} cells still moving.")
 
-    return cell_grid, cell_anim_steps
+    return cell_anim_steps[-1], cell_anim_steps
 
 
 def run_animations(
