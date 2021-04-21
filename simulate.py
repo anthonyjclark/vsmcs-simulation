@@ -18,7 +18,7 @@ Create a graph from the image. Vertices (pixels) are connected
 if they are the same color (0 or 1) and they are within some
 radius.
 
-3. find_connected_compnents
+3. find_connected_components
 
 Find all graph components.
 
@@ -194,7 +194,7 @@ def bfs(adj_list: Graph, start_vertex: Vertex) -> Set[Vertex]:
     return found
 
 
-def find_connected_compnents(adj_list: Graph) -> List[Set[Vertex]]:
+def find_connected_components(adj_list: Graph) -> List[Set[Vertex]]:
     """Compute all connected components of adjacency list.
 
     args
@@ -656,7 +656,7 @@ def main() -> None:
         print(f"Time to create graph: {time() - start:0.3f}s\n")
 
     start = time()
-    components = find_connected_compnents(adj_list)
+    components = find_connected_components(adj_list)
     num_components = len(components)
     if VERBOSE:
         print("Number of components:", num_components)
