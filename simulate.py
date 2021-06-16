@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 
-# TODO:
+# TODO: issues with boundary effects
 # - don't use the edge of the image?
-# - clean, document, search for off-by-one errors
 
+# 2021-06-16
+# - scored regions are better, but still needs some examining
+#   (see comments in compute_region_push_pull_score).
+# - work to do on motion of cells (should it be less
+#   deterministic).
+# - focus more on travel code next, then come back to
+#   computing region scores
 
 """
 General process:
@@ -68,6 +74,7 @@ from shutil import copyfile
 from time import time
 from typing import Dict, List, Set, Tuple
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.animation
 
@@ -333,13 +340,41 @@ def compute_region_push_pull_score(
     return
     """
 
+    #        | Capilary-y | Solid
+    # -------|------------|-------
+    # Bright | 1          | -1
+    #    Dim | 1          | 0
+
+    regions = lattice.copy() / np.amax(lattice)
+
+    # TODO: seems odd to use a threshold, can we instead use
+    # something, maybe, sigmoid-like?
+    components_threshold = 0.5
+    cap_indices = regions > components_threshold
+    non_cap_indices = ~cap_indices
+
+    # Lattice and brightness are now both scaled in [0, 1]
+    # for the calculations below.
+
+    # regions[cap_indices] *= -1
+
+    # TODO: do this elsewhere
+    scaled_brightness = (brightness + 1) / 2
+
+    regions[non_cap_indices] = 1
+    regions[non_cap_indices] *= -scaled_brightness[non_cap_indices]
+
+    return regions
+
+    """
     max_components = np.amax(lattice)
 
     regions = lattice - max_components / 2
     regions *= brightness
 
-    # TODO: is this what we want
+    # TODO: is this what we want?
     return regions / np.abs(regions).max()
+    """
 
 
 def compute_push_pull_direction(
@@ -559,8 +594,7 @@ def plot_figures(
         for (vy, vx) in component:
             components_image[vy, vx, :] = component_color
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 16))
-    axes = [ax for sublist in axes for ax in sublist]
+    fig, axes = plt.subplots(2, 3, figsize=(10, 10))
 
     plots = [
         (square_image, "Original Image"),
@@ -571,7 +605,8 @@ def plot_figures(
         (final_panes, "After Simulation"),
     ]
 
-    for ax, (img, ttl) in zip(axes, plots):
+    ims = []
+    for ax, (img, ttl) in zip(axes.flat, plots):
 
         if ttl == "After Simulation":
             alpha = 1 / len(final_panes)
@@ -579,10 +614,18 @@ def plot_figures(
             for g in img:
                 gimage = np.zeros(list(g.shape) + [3])
                 gimage[:, :, 0] = g
-                ax.imshow(gimage, alpha=alpha)
+                im = ax.imshow(gimage, alpha=alpha)
+            ims.append(im)
         else:
-            ax.imshow(img)
+            im = ax.imshow(img)
+            ims.append(im)
         ax.set_title(ttl)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    fig.subplots_adjust(bottom=0.1)
+    cbar_ax = fig.add_axes([0.15, 0.1, 0.7, 0.02])
+    fig.colorbar(ims[4], cax=cbar_ax, orientation="horizontal")
 
     plt.savefig(path.join(dirname, "panel_image.png"))
 
